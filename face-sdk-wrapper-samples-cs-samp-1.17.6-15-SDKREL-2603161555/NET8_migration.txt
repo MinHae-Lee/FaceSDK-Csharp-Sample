@@ -1,0 +1,112 @@
+변경 내역 (diff)
+1. face-sdk-wrapper-samples.csproj — 전면 재작성
+
+- <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+-   <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+-   <LangVersion>7.3</LangVersion>
+-   <Reference Include="AlcheraEncryptCS, Version=1.0.0.4 ...">
+-   <Reference Include="System" />
+-   <Reference Include="System.Deployment" />
+-   <Reference Include="System.Drawing" />
+-   <Reference Include="System.Windows.Forms" />
+-   ... (모든 Compile Include 항목 수동 열거)
++ <Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
++   <TargetFramework>net8.0-windows</TargetFramework>
++   <UseWindowsForms>true</UseWindowsForms>
++   <OutputType>WinExe</OutputType>
++   <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
++   <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
++   <PlatformTarget>x64</PlatformTarget>
+SDK 스타일은 소스 파일을 자동 포함하고, 프레임워크 어셈블리를 자동 참조합니다.
+
+2. App.config — 삭제
+
+- <?xml version="1.0" encoding="utf-8"?>
+- <configuration>
+-     <startup>
+-         <supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8"/>
+-     </startup>
+- </configuration>
+.NET 8에서 의미 없는 파일. 삭제.
+
+3. FaceSDKSVR.cs — 암호화 관련 코드 제거
+
+- using Alchera.Encrypt.Manager;
+- using System.Security.Policy;
+- /*
+-   251217 add PayloadEncrypt, AlcheraEncryptCS.dll
+- */
+
+- public abstract class PayloadEncrypt { ... }   // ~60줄
+- public class PayloadEncRSAAES : PayloadEncrypt { ... }  // ~110줄
+LivenessMulitFrameApi.Req:
+
+
+  public int frame_counts;
+  public string filename_extension = "jpg";
+- public bool encrypt_mode = false;
+  public byte[] images;
+- public string encrypted_images;
+LivenessMulitFrameApi.MakeReq():
+
+
+- public bool MakeReq(BlobImg[] liv_img_frames, PayloadEncrypt img_encryptor = null, string filename_extension = "jpg")
++ public bool MakeReq(BlobImg[] liv_img_frames, string filename_extension = "jpg")
+LivenessMulitFrameApi._OnMakeReq():
+
+
+- static string _OnMakeReq(Req req, BlobImg[] frames, PayloadEncrypt img_encryptor, string ext)
++ static string _OnMakeReq(Req req, BlobImg[] frames, string ext)
+- if (img_encryptor != null && img_encryptor.IsErr()) return ...
+- req.encrypt_mode = img_encryptor == null ? false : true;
+- if (req.encrypt_mode) { req.encrypted_images = ...; } else { req.images = ...; }
++ req.images = liv_img_frames_zip;
+FaceCompareApi.Req:
+
+
+  public string image_a_validate = "N";
+  public string image_b_validate = "Y";
+- public bool encrypt_mode = false;
+  public byte[] image_a;
+  public byte[] image_b;
+- public string encrypted_image_a;
+- public string encrypted_image_b;
+FaceCompareApi.MakeReq():
+
+
+- public bool MakeReq(BlobImg img1, BlobImg img2, PayloadEncrypt img_encryptor = null, ...)
++ public bool MakeReq(BlobImg img1, BlobImg img2, ...)
+FaceCompareApi._OnMakeReq() / Serialize():
+
+
+- if (img_encryptor != null && ...) return ...
+- req.encrypt_mode = ...
+- if (req.encrypt_mode) { req.encrypted_image_a/b = ...; } else { req.image_a/b = ...; }
++ req.image_a = img1_jpg.data_;
++ req.image_b = img2_jpg.data_;
+
+- content.Add(..., "encrypt_mode");
+- if (req_.encrypt_mode) { content.Add(encrypted_image_a/b); } else { ... }
++ content.Add(image_a, "image_a", "image_a.jpg");
++ content.Add(image_b, "image_b", "image_b.jpg");
+4. sample/DemoClientServer.cs — 암호화 호출부 제거 (2곳)
+Liveness API 호출부:
+
+
+- PayloadEncrypt img_encryptor = null;
+- if (API_ENC_IMG_TYPE == "RSA+AES") { img_encryptor = PayloadEncrypt.Create(...); }
+- _ui_msg("[SV-REQ] > api img encrypt mode=" + API_ENC_IMG_TYPE);
+- if (API_ENC_IMG_TYPE != "NONE") { if (img_encryptor.IsErr()) { ... } }
+- if (!_api.MakeReq(_liv_img_frames, img_encryptor))
++ if (!_api.MakeReq(_liv_img_frames))
+- if (API_ENC_IMG_TYPE != "NONE") { _ui_msg("enc time_ms=..."); }
+Compare API 호출부:
+
+
+- PayloadEncrypt img_encryptor = null;
+- if (API_ENC_IMG_TYPE == "RSA+AES") { img_encryptor = PayloadEncrypt.Create(...); }
+- _ui_msg("[SV-REQ] > api img encrypt mode=" + API_ENC_IMG_TYPE);
+- if (API_ENC_IMG_TYPE != "NONE") { if (img_encryptor.IsErr()) { ... } }
+- if (!_api.MakeReq(ctx.cmp_src_bgr, ctx.cmp_dst_bgr, img_encryptor))
++ if (!_api.MakeReq(ctx.cmp_src_bgr, ctx.cmp_dst_bgr))
+- if (API_ENC_IMG_TYPE != "NONE") { _ui_msg("enc time_ms=..."); }
